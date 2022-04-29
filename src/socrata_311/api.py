@@ -16,10 +16,13 @@ import datetime
 #   can be used to simply pull data modified in Socrata since a given timestamp
 # =============================================================================
 def pull_data_modified_since(since,client=None,timeout = 120,data_limit = 10000):
-    if (client == None):
+    if client is None:
         client = Socrata(settings.APP_NYC_API_DOMAIN ,settings.APP_TOKEN_311,timeout=timeout)
-    data = client.get(settings.APP_NYC_DATASET,limit = data_limit,where = "resolution_action_updated_date >= '"+str(since)+"'")
-    return data
+    return client.get(
+        settings.APP_NYC_DATASET,
+        limit=data_limit,
+        where="resolution_action_updated_date >= '" + str(since) + "'",
+    )
 
 # =============================================================================
 #   receives a date object or timestamp in isoformat
@@ -28,10 +31,13 @@ def pull_data_modified_since(since,client=None,timeout = 120,data_limit = 10000)
 #   can be used to simply pull data created in Socrata since a given timestamp
 # =============================================================================
 def pull_data_created_since(since,client=None,timeout = 120,data_limit = 10000):
-    if (client == None):
+    if client is None:
         client = Socrata(settings.APP_NYC_API_DOMAIN ,settings.APP_TOKEN_311,timeout=timeout)
-    data = client.get(settings.APP_NYC_DATASET,limit = data_limit,where = "created_date>= '"+str(since)+"'")
-    return data
+    return client.get(
+        settings.APP_NYC_DATASET,
+        limit=data_limit,
+        where="created_date>= '" + str(since) + "'",
+    )
 
 
 # =============================================================================
@@ -42,17 +48,33 @@ def pull_data_created_since(since,client=None,timeout = 120,data_limit = 10000):
 #   for a given group key
 # =============================================================================
 def pull_agg_closure_statistics_created_since(since,client=None,timeout = 120,group_key = ['agency'], restrict_clause=""):
-    if (client == None):
+    if client is None:
         client = Socrata(settings.APP_NYC_API_DOMAIN ,settings.APP_TOKEN_311,timeout=timeout)
     group_key_str = ','.join(group_key)
-    where_clause = ""
-    if (restrict_clause != ""):
-        where_clause = " and " + restrict_clause
-    data = client.get(settings.APP_NYC_DATASET,query = "select "+group_key_str +", " \
-                                                       "count(*) as total, " \
-                                                       "sum(case(status='Closed',1,true,0)) as closed " \
-                                                       "where created_date>= '"+str(since)+"'" \
-                                                        +where_clause+" group by "+group_key_str )
+    where_clause = " and " + restrict_clause if (restrict_clause != "") else ""
+    data = client.get(
+        settings.APP_NYC_DATASET,
+        query=(
+            (
+                (
+                    (
+                        (
+                            f"select {group_key_str}" + ", "
+                            "count(*) as total, "
+                            "sum(case(status='Closed',1,true,0)) as closed "
+                            "where created_date>= '"
+                        )
+                        + str(since)
+                        + "'"
+                    )
+                    + where_clause
+                )
+                + " group by "
+            )
+            + group_key_str
+        ),
+    )
+
 
     dataFrame= pd.DataFrame.from_dict(data)
     dataFrame['perc_closed'] = (dataFrame['closed'].astype('float') / dataFrame['total'].astype('float'))
@@ -68,7 +90,7 @@ def pull_agg_closure_statistics_created_since(since,client=None,timeout = 120,gr
 #   calc
 # =============================================================================
 def pull_raw_time_to_closure_statistics_created_since_closed_only(since,client=None,timeout = 120,group_key = ['agency'], data_limit = 1000):
-    if (client == None):
+    if client is None:
         client = Socrata(settings.APP_NYC_API_DOMAIN ,settings.APP_TOKEN_311,timeout=timeout)
     group_key_str = ','.join(group_key)
 
@@ -93,17 +115,30 @@ def pull_raw_time_to_closure_statistics_created_since_closed_only(since,client=N
 #   all complaints received since the desired timestamp
 # =============================================================================
 def pull_agg_time_to_closure_statistics_created_since_closed_only(since,client=None,timeout = 120,group_key = ['agency']):
-    if (client == None):
+    if client is None:
         client = Socrata(settings.APP_NYC_API_DOMAIN ,settings.APP_TOKEN_311,timeout=timeout)
     group_key_str = ','.join(group_key)
 
-    data = client.get(settings.APP_NYC_DATASET,query = "select "+ group_key_str+","  \
-                          "avg(((date_extract_woy(closed_date)*7) -(7 - case(date_extract_dow(closed_date)=0,7,true,date_extract_dow(closed_date)))) " \
-                          " - ((date_extract_woy(created_date)*7) - (7 - case(date_extract_dow(created_date)=0,7,true,date_extract_dow(created_date)))) "\
-                          " + ((date_extract_y(closed_date)  - date_extract_y(created_date))* 365) "\
-                          ") as days_to_closure "\
-                          "where created_date >= '" + str(since) + "' and closed_date IS NOT NULL and status = 'Closed' " \
-                          "group by "+group_key_str )
+    data = client.get(
+        settings.APP_NYC_DATASET,
+        query=(
+            (
+                (
+                    f"select {group_key_str}" + ","
+                    "avg(((date_extract_woy(closed_date)*7) -(7 - case(date_extract_dow(closed_date)=0,7,true,date_extract_dow(closed_date)))) "
+                    " - ((date_extract_woy(created_date)*7) - (7 - case(date_extract_dow(created_date)=0,7,true,date_extract_dow(created_date)))) "
+                    " + ((date_extract_y(closed_date)  - date_extract_y(created_date))* 365) "
+                    ") as days_to_closure "
+                    "where created_date >= '"
+                )
+                + str(since)
+                + "' and closed_date IS NOT NULL and status = 'Closed' "
+                "group by "
+            )
+            + group_key_str
+        ),
+    )
+
     dataFrame= pd.DataFrame.from_dict(data)
     dataFrame['days_to_closure'] = dataFrame['days_to_closure'].astype('float')
     return dataFrame
@@ -148,20 +183,38 @@ def pull_daily_closure_statistics_since_x_weeks(weeks, client=None, timeout=120,
                                                 ,restrict_clause = ""):
     st = datetime.datetime.now() - datetime.timedelta(weeks=weeks)
     since = st.isoformat()
-    if (client == None):
+    if client is None:
         client = Socrata(settings.APP_NYC_API_DOMAIN, settings.APP_TOKEN_311, timeout=timeout)
     group_key_str = ','.join(group_key)
-    where_clause = ""
-    if (restrict_clause != ""):
-        where_clause = " and "+restrict_clause
+    where_clause = " and "+restrict_clause if (restrict_clause != "") else ""
+    data = client.get(
+        settings.APP_NYC_DATASET,
+        query=(
+            (
+                (
+                    (
+                        (
+                            (
+                                f"select {group_key_str}" + ","
+                                "(((date_extract_woy(closed_date)*7) -(7 - case(date_extract_dow(closed_date)=0,7,true,date_extract_dow(closed_date)))) "
+                                " - ((date_extract_woy(created_date)*7) - (7 - case(date_extract_dow(created_date)=0,7,true,date_extract_dow(created_date)))) "
+                                " + ((date_extract_y(closed_date)  - date_extract_y(created_date))* 365) "
+                                ") as days_to_closure, count(unique_key) as number_of_records "
+                                "where created_date >= '"
+                            )
+                            + str(since)
+                            + "' and closed_date IS NOT NULL and status = 'Closed' "
+                        )
+                        + where_clause
+                    )
+                    + " group by "
+                )
+                + group_key_str
+            )
+            + ", days_to_closure"
+        ),
+    )
 
-    data = client.get(settings.APP_NYC_DATASET,query = "select "+ group_key_str+","  \
-                          "(((date_extract_woy(closed_date)*7) -(7 - case(date_extract_dow(closed_date)=0,7,true,date_extract_dow(closed_date)))) " \
-                          " - ((date_extract_woy(created_date)*7) - (7 - case(date_extract_dow(created_date)=0,7,true,date_extract_dow(created_date)))) "\
-                          " + ((date_extract_y(closed_date)  - date_extract_y(created_date))* 365) "\
-                          ") as days_to_closure, count(unique_key) as number_of_records "\
-                          "where created_date >= '" + str(since) + "' and closed_date IS NOT NULL and status = 'Closed' " \
-                          + where_clause + " group by "+group_key_str +", days_to_closure")
     dataFrame = pd.DataFrame.from_dict(data)
     dataFrame['days_to_closure'] = dataFrame['days_to_closure'].astype('float')
     dataFrame['past_number_of_weeks'] = weeks
@@ -177,20 +230,35 @@ def pull_closed_within_a_day_stats_since_x_weeks(weeks, client=None, timeout=120
                                                  , restrict_clause=""):
     st = datetime.datetime.now() - datetime.timedelta(weeks=weeks)
     since = st.isoformat()
-    if (client == None):
+    if client is None:
         client = Socrata(settings.APP_NYC_API_DOMAIN, settings.APP_TOKEN_311, timeout=timeout)
     group_key_str = ','.join(group_key)
-    where_clause = ""
-    if (restrict_clause != ""):
-        where_clause = " and " + restrict_clause
+    where_clause = " and " + restrict_clause if (restrict_clause != "") else ""
+    data = client.get(
+        settings.APP_NYC_DATASET,
+        query=(
+            (
+                (
+                    (
+                        (
+                            f"select {group_key_str}" + ","
+                            "avg(case((((date_extract_woy(closed_date)*7) -(7 - case(date_extract_dow(closed_date)=0,7,true,date_extract_dow(closed_date)))) "
+                            " - ((date_extract_woy(created_date)*7) - (7 - case(date_extract_dow(created_date)=0,7,true,date_extract_dow(created_date)))) "
+                            " + ((date_extract_y(closed_date)  - date_extract_y(created_date))* 365) "
+                            ")<=1,1,true,0 )) as closed_within_a_day, count(unique_key) as number_of_records "
+                            "where created_date >= '"
+                        )
+                        + str(since)
+                        + "' and closed_date IS NOT NULL and status = 'Closed' "
+                    )
+                    + where_clause
+                )
+                + " group by "
+            )
+            + group_key_str
+        ),
+    )
 
-    data = client.get(settings.APP_NYC_DATASET,query = "select "+ group_key_str+","  \
-                          "avg(case((((date_extract_woy(closed_date)*7) -(7 - case(date_extract_dow(closed_date)=0,7,true,date_extract_dow(closed_date)))) " \
-                          " - ((date_extract_woy(created_date)*7) - (7 - case(date_extract_dow(created_date)=0,7,true,date_extract_dow(created_date)))) "\
-                          " + ((date_extract_y(closed_date)  - date_extract_y(created_date))* 365) "\
-                          ")<=1,1,true,0 )) as closed_within_a_day, count(unique_key) as number_of_records "\
-                          "where created_date >= '" + str(since) + "' and closed_date IS NOT NULL and status = 'Closed' " \
-                          +where_clause+" group by "+group_key_str)
     dataFrame = pd.DataFrame.from_dict(data)
     dataFrame['closed_within_a_day'] = dataFrame['closed_within_a_day'].astype('float')
     dataFrame['past_number_of_weeks'] = weeks
